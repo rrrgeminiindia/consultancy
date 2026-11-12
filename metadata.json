@@ -1,0 +1,6 @@
+{
+  "name": "CandidateFlow",
+  "description": "Recruitment Management and Follow-Up Assistant. Manage Candidates. Track Progress. Never Miss a Follow-Up.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

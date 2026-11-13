@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Candidate,
   JobOpening,
@@ -35,11 +35,12 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
   teammates,
   onCandidateAdded
 }) => {
+  const defaultJob = jobOpenings[0];
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [contactNumber, setContactNumber] = useState('');
-  const [jobTitle, setJobTitle] = useState(jobOpenings[0]?.title || 'Senior Full Stack Engineer (React/Node)');
-  const [jobLocation, setJobLocation] = useState(jobOpenings[0]?.location || 'Austin, TX (Hybrid)');
+  const [jobTitle, setJobTitle] = useState(defaultJob?.title || 'Senior Full Stack Engineer (React/Node)');
+  const [jobLocation, setJobLocation] = useState(defaultJob?.location || 'Austin, TX (Hybrid)');
   const [totalItExperience, setTotalItExperience] = useState('5 years');
   const [relevantExperience, setRelevantExperience] = useState('');
   const [currentLocation, setCurrentLocation] = useState('');
@@ -47,7 +48,9 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
   const [currentEmployer, setCurrentEmployer] = useState('');
   const [noticePeriod, setNoticePeriod] = useState('2 weeks');
   const [applicationDate, setApplicationDate] = useState(new Date().toISOString().split('T')[0]);
-  const [linkedInJobOpening, setLinkedInJobOpening] = useState('LinkedIn Post - Active Opening');
+  const [linkedInJobOpening, setLinkedInJobOpening] = useState(
+    defaultJob ? `LinkedIn Job - ${defaultJob.title}` : 'LinkedIn Post - Active Opening'
+  );
   const [assignedTeammateId, setAssignedTeammateId] = useState<string>('');
   const [notes, setNotes] = useState('');
 
@@ -56,10 +59,38 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
   const [allowDuplicateOverride, setAllowDuplicateOverride] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      const firstJob = jobOpenings[0];
+      setFullName('');
+      setEmail('');
+      setContactNumber('');
+      setJobTitle(firstJob?.title || 'Senior Full Stack Engineer (React/Node)');
+      setJobLocation(firstJob?.location || 'Austin, TX (Hybrid)');
+      setTotalItExperience('5 years');
+      setRelevantExperience('');
+      setCurrentLocation('');
+      setWorkAuthorization('US Citizen');
+      setCurrentEmployer('');
+      setNoticePeriod('2 weeks');
+      setApplicationDate(new Date().toISOString().split('T')[0]);
+      setLinkedInJobOpening(
+        firstJob ? `LinkedIn Job - ${firstJob.title}` : 'LinkedIn Post - Active Opening'
+      );
+      setAssignedTeammateId('');
+      setNotes('');
+      setDuplicateWarning(null);
+      setAllowDuplicateOverride(false);
+      setErrorMessage(null);
+    }
+  }, [isOpen, jobOpenings]);
+
   if (!isOpen) return null;
 
   const handleJobSelect = (title: string) => {
     setJobTitle(title);
+    setDuplicateWarning(null);
+    setAllowDuplicateOverride(false);
     const matched = jobOpenings.find((j) => j.title === title);
     if (matched) {
       setJobLocation(matched.location);
@@ -86,7 +117,7 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
     }
 
     // Duplicate detection check
-    const existingDuplicate = StorageService.checkDuplicate(email, linkedInJobOpening);
+    const existingDuplicate = StorageService.checkDuplicate(email, linkedInJobOpening, undefined, jobTitle);
     if (existingDuplicate && !allowDuplicateOverride) {
       setDuplicateWarning(existingDuplicate);
       return;
@@ -232,7 +263,11 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
                   required
                   placeholder="e.g. maya.lin@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setDuplicateWarning(null);
+                    setAllowDuplicateOverride(false);
+                  }}
                   className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                 />
               </div>
@@ -309,7 +344,11 @@ export const AddCandidateModal: React.FC<AddCandidateModalProps> = ({
                 <input
                   type="text"
                   value={linkedInJobOpening}
-                  onChange={(e) => setLinkedInJobOpening(e.target.value)}
+                  onChange={(e) => {
+                    setLinkedInJobOpening(e.target.value);
+                    setDuplicateWarning(null);
+                    setAllowDuplicateOverride(false);
+                  }}
                   className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-teal-500"
                 />
               </div>

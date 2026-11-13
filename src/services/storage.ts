@@ -10,7 +10,7 @@ import {
 } from '../types';
 import {
   INITIAL_ADMIN_USER,
-  INITIAL_CANDIDATES,
+  createInitialCandidates,
   INITIAL_EMAIL_TEMPLATES,
   INITIAL_FORM_TEMPLATES,
   INITIAL_JOB_OPENINGS,
@@ -91,7 +91,7 @@ export const StorageService = {
         console.error('Error parsing candidates', e);
       }
     }
-    candidatesCache = [...INITIAL_CANDIDATES];
+    candidatesCache = createInitialCandidates();
     localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidatesCache));
     return candidatesCache;
   },
@@ -139,27 +139,45 @@ export const StorageService = {
     let updatedHistory = [...(current.stageHistory || [])];
     let callPendingStartedAt = current.callPendingStartedAt;
     let stageEnteredAt = current.stageEnteredAt;
+    let assignmentDate = current.assignmentDate;
+
+    if (
+      updates.assignedTeammateId !== undefined &&
+      updates.assignedTeammateId !== current.assignedTeammateId &&
+      updates.assignmentDate === undefined
+    ) {
+      assignmentDate = updates.assignedTeammateId ? nowIso : null;
+    }
 
     // Check if stage changed
     if (updates.stage && updates.stage !== current.stage) {
       stageEnteredAt = nowIso;
+      const defaultNote =
+        updates.stage === 'Call Pending'
+          ? 'Entered Call Pending — 24h/48h follow-up timer started'
+          : ['Call Completed', 'Withdrawn', 'Closed'].includes(updates.stage) && current.stage === 'Call Pending'
+          ? `Moved to ${updates.stage} — follow-up timer stopped`
+          : `Moved to ${updates.stage}`;
+
       updatedHistory.unshift({
         stage: updates.stage,
         enteredAt: nowIso,
         updatedBy: this.getActiveUser().name,
-        notes: notesForHistory || `Moved to ${updates.stage}`
+        notes: notesForHistory || defaultNote
       });
 
-      if (updates.stage === 'Call Pending' && !callPendingStartedAt) {
+      if (updates.stage === 'Call Pending') {
         callPendingStartedAt = nowIso;
       } else if (['Call Completed', 'Withdrawn', 'Closed'].includes(updates.stage)) {
-        // timer stops
+        // Timer stops cleanly; keep null if not completed via Call Pending
+        callPendingStartedAt = null;
       }
     }
 
     const updatedCandidate: Candidate = {
       ...current,
       ...updates,
+      assignmentDate: updates.assignmentDate !== undefined ? updates.assignmentDate : assignmentDate,
       stageHistory: updatedHistory,
       callPendingStartedAt: updates.callPendingStartedAt !== undefined ? updates.callPendingStartedAt : callPendingStartedAt,
       stageEnteredAt: updates.stageEnteredAt || stageEnteredAt,
@@ -184,16 +202,19 @@ export const StorageService = {
   /**
    * Check for duplicate candidate by normalized email + LinkedIn job opening
    */
-  checkDuplicate(email: string, jobOpening: string, excludeId?: string): Candidate | null {
+  checkDuplicate(email: string, jobOpening: string, excludeId?: string, jobTitle?: string): Candidate | null {
     const normalizedTargetEmail = normalizeEmail(email);
+    const normalizedOpening = jobOpening.trim().toLowerCase();
+    const normalizedTitle = (jobTitle || '').trim().toLowerCase();
     const candidates = this.getCandidates();
     return (
       candidates.find(
         (c) =>
           c.id !== excludeId &&
           normalizeEmail(c.email) === normalizedTargetEmail &&
-          (c.linkedInJobOpening.toLowerCase() === jobOpening.toLowerCase() ||
-            c.jobTitle.toLowerCase() === jobOpening.toLowerCase())
+          (c.linkedInJobOpening.trim().toLowerCase() === normalizedOpening ||
+            c.jobTitle.trim().toLowerCase() === normalizedOpening ||
+            (normalizedTitle !== '' && c.jobTitle.trim().toLowerCase() === normalizedTitle))
       ) || null
     );
   },
@@ -412,6 +433,7 @@ export const StorageService = {
     recipientEmail: string;
     subject: string;
     content: string;
+    sentAt?: string;
   }) {
     const candidates = this.getCandidates();
     const cand = candidates.find((c) => c.id === candidateId);
@@ -419,6 +441,7 @@ export const StorageService = {
 
     const activeUser = this.getActiveUser();
     const nowIso = new Date().toISOString();
+    const effectiveSentAt = logData.sentAt ? new Date(logData.sentAt).toISOString() : nowIso;
 
     const emailLog = {
       id: `elog-${Date.now()}`,
@@ -426,7 +449,7 @@ export const StorageService = {
       templateId: logData.templateId,
       templateTitle: logData.templateTitle,
       sentBy: activeUser.name,
-      sentAt: nowIso,
+      sentAt: effectiveSentAt,
       recipientEmail: logData.recipientEmail,
       subject: logData.subject,
       content: logData.content
@@ -435,7 +458,7 @@ export const StorageService = {
     const newLogs = [emailLog, ...(cand.emailLogs || [])];
     return this.updateCandidate(candidateId, {
       emailLogs: newLogs,
-      lastContactDate: nowIso
+      lastContactDate: effectiveSentAt
     }, `Email recorded: ${logData.templateTitle}`);
   },
 
@@ -475,7 +498,7 @@ export const StorageService = {
 
   // --- Reset to Initial Data ---
   resetToSampleData() {
-    candidatesCache = [...INITIAL_CANDIDATES];
+    candidatesCache = createInitialCandidates();
     teammatesCache = [...INITIAL_TEAMMATES];
     jobsCache = [...INITIAL_JOB_OPENINGS];
     formTemplatesCache = [...INITIAL_FORM_TEMPLATES];

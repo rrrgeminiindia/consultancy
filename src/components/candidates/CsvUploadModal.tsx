@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Candidate, JobOpening, Teammate } from '../../types';
 import { StorageService } from '../../services/storage';
 import { normalizeEmail } from '../../utils/helpers';
@@ -81,24 +81,38 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
     invalidRows: number;
     importedCount: number;
   } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setFile(null);
+      setCsvHeaders([]);
+      setRawRows([]);
+      setParsedRows([]);
+      setImportSummary(null);
+      setErrorMessage(null);
+      setStep('upload');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  // Simple CSV parser
+  // CSV parser supporting quoted commas and escaped quotes ("")
   const parseCsvText = (text: string) => {
+    setErrorMessage(null);
     const lines = text
       .split(/\r\n|\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
 
     if (lines.length < 2) {
-      alert('CSV must contain a header row and at least one data row.');
+      setErrorMessage('CSV must contain a header row and at least one data row.');
       return;
     }
 
-    // Helper to split CSV line considering quotes
     const parseLine = (line: string): string[] => {
       const result: string[] = [];
       let current = '';
@@ -106,7 +120,12 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
       for (let i = 0; i < line.length; i++) {
         const char = line[i];
         if (char === '"') {
-          inQuotes = !inQuotes;
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
         } else if (char === ',' && !inQuotes) {
           result.push(current.trim());
           current = '';
@@ -167,15 +186,18 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.name.endsWith('.csv')) {
-      setFile(droppedFile);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        parseCsvText(content);
-      };
-      reader.readAsText(droppedFile);
+    if (!droppedFile) return;
+    if (!droppedFile.name.toLowerCase().endsWith('.csv')) {
+      setErrorMessage('Please upload a valid .csv file.');
+      return;
     }
+    setFile(droppedFile);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      parseCsvText(content);
+    };
+    reader.readAsText(droppedFile);
   };
 
   const downloadSampleCsv = () => {
@@ -197,8 +219,10 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   };
 
   const validateAndBuildPreview = () => {
+    setErrorMessage(null);
     const existingCandidates = StorageService.getCandidates();
     const rows: ParsedRow[] = [];
+    const seenBatchKeys = new Map<string, number>();
 
     rawRows.forEach((row, idx) => {
       const rawData: Record<string, string> = {};
@@ -229,18 +253,26 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
       else if (!email.includes('@')) errors.push('Invalid Email Format');
       if (!contactNumber.trim()) errors.push('Missing Phone Number');
 
-      // Duplicate detection against existing database
+      // Duplicate detection against existing database AND earlier rows in this CSV batch
       let isDuplicate = false;
       let duplicateCandidateName = '';
       if (email.trim()) {
         const norm = normalizeEmail(email);
+        const batchKey = `${norm}::${jobTitle.trim().toLowerCase()}`;
         const dup = existingCandidates.find(
-          (c) => normalizeEmail(c.email) === norm && c.jobTitle.toLowerCase() === jobTitle.toLowerCase()
+          (c) => normalizeEmail(c.email) === norm && c.jobTitle.trim().toLowerCase() === jobTitle.trim().toLowerCase()
         );
         if (dup) {
           isDuplicate = true;
           duplicateCandidateName = dup.fullName;
           errors.push(`Duplicate: already exists as ${dup.fullName}`);
+        } else if (seenBatchKeys.has(batchKey)) {
+          isDuplicate = true;
+          const firstRowNum = seenBatchKeys.get(batchKey);
+          duplicateCandidateName = `CSV Row #${firstRowNum}`;
+          errors.push(`Duplicate inside CSV: matches Row #${firstRowNum}`);
+        } else {
+          seenBatchKeys.set(batchKey, idx + 2);
         }
       }
 
@@ -277,7 +309,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   const handleExecuteImport = () => {
     const validRows = parsedRows.filter((r) => r.isValid && !r.isDuplicate);
     if (validRows.length === 0) {
-      alert('No valid non-duplicate rows to import.');
+      setErrorMessage('No valid non-duplicate rows to import.');
       return;
     }
 
@@ -334,6 +366,22 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {errorMessage && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-3 text-xs text-rose-800 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{errorMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="text-rose-600 hover:text-rose-800 font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Step 1: Upload */}
         {step === 'upload' && (

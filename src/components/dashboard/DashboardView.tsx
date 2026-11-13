@@ -5,7 +5,8 @@ import {
   RecruitmentStage,
   UserRole,
   ResumeStatus,
-  CandidateFormStatus
+  CandidateFormStatus,
+  IdentityVerificationStatus
 } from '../../types';
 import {
   Users,
@@ -15,13 +16,11 @@ import {
   CheckCircle,
   AlertOctagon,
   Clock,
-  Sparkles,
   ArrowRight,
   TrendingUp,
-  Mail,
-  ShieldCheck
+  Mail
 } from 'lucide-react';
-import { getCandidateAlertStatus, formatTimeInStage } from '../../utils/helpers';
+import { getCandidateAlertStatus } from '../../utils/helpers';
 import { CandidateTable } from '../candidates/CandidateTable';
 
 interface DashboardViewProps {
@@ -33,6 +32,8 @@ interface DashboardViewProps {
   onUpdateStage: (candidateId: string, stage: RecruitmentStage) => void;
   onQuickToggleResume: (candidateId: string, status: ResumeStatus) => void;
   onQuickToggleForm: (candidateId: string, status: CandidateFormStatus) => void;
+  onQuickToggleIdentity?: (candidateId: string, status: IdentityVerificationStatus) => void;
+  onQuickAssignTeammate?: (candidateId: string, teammateId: string) => void;
   onNavigateToEmails: () => void;
   onNavigateToCandidates: () => void;
   searchQuery: string;
@@ -47,6 +48,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onUpdateStage,
   onQuickToggleResume,
   onQuickToggleForm,
+  onQuickToggleIdentity,
+  onQuickAssignTeammate,
   onNavigateToEmails,
   onNavigateToCandidates,
   searchQuery
@@ -61,7 +64,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalCandidates = scopedCandidates.length;
   const newCandidates = scopedCandidates.filter((c) => c.stage === 'New Candidate').length;
   const documentsPending = scopedCandidates.filter(
-    (c) => c.stage === 'Documents Pending' || (c.resumeStatus === 'Pending' || c.candidateFormStatus === 'Pending')
+    (c) =>
+      !['Withdrawn', 'Closed'].includes(c.stage) &&
+      (c.stage === 'Documents Pending' || c.resumeStatus === 'Pending' || c.candidateFormStatus === 'Pending')
   ).length;
   const readyForCall = scopedCandidates.filter((c) => c.stage === 'Ready for Teammate Call').length;
   const callsPending = scopedCandidates.filter((c) => c.stage === 'Call Pending').length;
@@ -227,7 +232,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-rose-600 text-white">
-                        <AlertOctagon className="w-3 h-3" /> Overdue: {Math.floor(alert.hoursElapsed)} Hours in Call Pending
+                        <AlertOctagon className="w-3 h-3" />{' '}
+                        {alert.isTimerActive
+                          ? `Overdue: ${Math.floor(alert.hoursElapsed)} Hours in Call Pending`
+                          : `Follow-Up Overdue (${Math.floor(alert.hoursElapsed)}h past due)`}
                       </span>
                       <h4 className="font-bold text-slate-900 text-sm mt-1.5">
                         {candidate.fullName}
@@ -254,13 +262,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                 <div className="mt-3 pt-3 border-t border-rose-200/60 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-rose-700 font-medium">
-                    Recommended: Send Template G (48h Overdue)
+                    {alert.isTimerActive
+                      ? 'Recommended: Send Template G (48h Overdue)'
+                      : `Stage: ${candidate.stage} • Needs follow-up`}
                   </span>
                   <button
                     onClick={() => onSelectCandidate(candidate)}
                     className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1 transition-colors shadow-2xs"
                   >
-                    <span>Log Call / Review</span>
+                    <span>{alert.isTimerActive ? 'Log Call / Review' : 'Review Candidate'}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -277,7 +287,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-amber-500 text-white">
-                        <Clock className="w-3 h-3" /> Approaching: {Math.floor(alert.hoursElapsed)} Hours in Queue
+                        <Clock className="w-3 h-3" />{' '}
+                        {alert.isTimerActive
+                          ? `Approaching: ${Math.floor(alert.hoursElapsed)} Hours in Queue`
+                          : `Follow-Up Due (${candidate.stage})`}
                       </span>
                       <h4 className="font-bold text-slate-900 text-sm mt-1.5">
                         {candidate.fullName}
@@ -304,13 +317,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                 <div className="mt-3 pt-3 border-t border-amber-200/60 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-amber-800 font-medium">
-                    Call deadline expires at 48h
+                    {alert.isTimerActive
+                      ? 'Call deadline expires at 48h'
+                      : candidate.resumeStatus === 'Pending'
+                      ? 'Reminder: Resume still pending'
+                      : candidate.candidateFormStatus === 'Pending'
+                      ? 'Reminder: Info form still pending'
+                      : 'Scheduled follow-up date reached'}
                   </span>
                   <button
                     onClick={() => onSelectCandidate(candidate)}
                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1 transition-colors shadow-2xs"
                   >
-                    <span>Record Call Attempt</span>
+                    <span>{alert.isTimerActive ? 'Record Call Attempt' : 'Follow Up Now'}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -340,6 +359,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           onUpdateStage={onUpdateStage}
           onQuickToggleResume={onQuickToggleResume}
           onQuickToggleForm={onQuickToggleForm}
+          onQuickToggleIdentity={onQuickToggleIdentity}
+          onQuickAssignTeammate={onQuickAssignTeammate}
           externalSearch={searchQuery}
         />
       </div>

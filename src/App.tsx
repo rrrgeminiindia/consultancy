@@ -4,6 +4,7 @@ import {
   CandidateFormStatus,
   CandidateFormTemplate,
   EmailTemplate,
+  IdentityVerificationStatus,
   JobOpening,
   RecruitmentStage,
   ResumeStatus,
@@ -38,6 +39,7 @@ export default function App() {
   // Navigation & UI States
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const [jobFilter, setJobFilter] = useState('ALL');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Modals
@@ -85,6 +87,13 @@ export default function App() {
   const handleSwitchUser = (user: UserProfile) => {
     StorageService.setActiveUser(user);
     setActiveUser(user);
+    if (
+      selectedCandidate &&
+      user.role === 'TEAMMATE' &&
+      selectedCandidate.assignedTeammateId !== user.id
+    ) {
+      setSelectedCandidate(null);
+    }
     // If teammate and on admin-only tab, revert to dashboard
     if (user.role === 'TEAMMATE' && ['jobs', 'forms', 'team', 'reports'].includes(currentTab)) {
       setCurrentTab('dashboard');
@@ -96,11 +105,42 @@ export default function App() {
   };
 
   const handleQuickToggleResume = (candidateId: string, status: ResumeStatus) => {
-    StorageService.updateCandidate(candidateId, { resumeStatus: status });
+    const target = candidates.find((c) => c.id === candidateId);
+    const updates: Partial<Candidate> = { resumeStatus: status };
+    if (status === 'Received' && target?.candidateFormStatus === 'Received' && target.stage === 'Documents Pending') {
+      updates.stage = 'Documents Received';
+    }
+    StorageService.updateCandidate(candidateId, updates, `Resume status set to ${status}`);
   };
 
   const handleQuickToggleForm = (candidateId: string, status: CandidateFormStatus) => {
-    StorageService.updateCandidate(candidateId, { candidateFormStatus: status });
+    const target = candidates.find((c) => c.id === candidateId);
+    const updates: Partial<Candidate> = { candidateFormStatus: status };
+    if (status === 'Received' && target?.resumeStatus === 'Received' && target.stage === 'Documents Pending') {
+      updates.stage = 'Documents Received';
+    }
+    StorageService.updateCandidate(candidateId, updates, `Candidate form status set to ${status}`);
+  };
+
+  const handleQuickToggleIdentity = (candidateId: string, status: IdentityVerificationStatus) => {
+    StorageService.updateCandidate(
+      candidateId,
+      { identityVerificationStatus: status },
+      `Identity verification status set to ${status}`
+    );
+  };
+
+  const handleQuickAssignTeammate = (candidateId: string, teammateId: string) => {
+    const tm = teammates.find((t) => t.id === teammateId);
+    StorageService.updateCandidate(
+      candidateId,
+      {
+        assignedTeammateId: teammateId || null,
+        assignedTeammateName: tm ? tm.name : null,
+        assignmentDate: teammateId ? new Date().toISOString() : null
+      },
+      `Assigned to ${tm ? tm.name : 'Unassigned'}`
+    );
   };
 
   const handleOpenEmailForCandidate = (cand: Candidate) => {
@@ -152,6 +192,8 @@ export default function App() {
               onUpdateStage={handleUpdateStage}
               onQuickToggleResume={handleQuickToggleResume}
               onQuickToggleForm={handleQuickToggleForm}
+              onQuickToggleIdentity={handleQuickToggleIdentity}
+              onQuickAssignTeammate={handleQuickAssignTeammate}
               onNavigateToEmails={() => setCurrentTab('emails')}
               onNavigateToCandidates={() => setCurrentTab('candidates')}
               searchQuery={searchQuery}
@@ -198,7 +240,10 @@ export default function App() {
                 onUpdateStage={handleUpdateStage}
                 onQuickToggleResume={handleQuickToggleResume}
                 onQuickToggleForm={handleQuickToggleForm}
+                onQuickToggleIdentity={handleQuickToggleIdentity}
+                onQuickAssignTeammate={handleQuickAssignTeammate}
                 externalSearch={searchQuery}
+                initialJobFilter={jobFilter}
               />
             </div>
           )}
@@ -207,7 +252,12 @@ export default function App() {
             <JobOpeningsView
               jobOpenings={jobOpenings}
               candidates={candidates}
+              formTemplates={formTemplates}
               userRole={activeUser.role}
+              onSelectJobFilter={(jobTitle) => {
+                setJobFilter(jobTitle);
+                setCurrentTab('candidates');
+              }}
               onJobOpeningsUpdated={setJobOpenings}
             />
           )}
@@ -279,9 +329,11 @@ export default function App() {
           onClose={() => setSelectedCandidate(null)}
           formTemplates={formTemplates}
           emailTemplates={emailTemplates}
+          jobOpenings={jobOpenings}
           teammates={teammates}
           userRole={activeUser.role}
           currentUserId={activeUser.id}
+          currentUserName={activeUser.name}
           onCandidateUpdated={(updated) => setSelectedCandidate(updated)}
           onCandidateDeleted={() => setSelectedCandidate(null)}
           onOpenEmailModal={handleOpenEmailForCandidate}

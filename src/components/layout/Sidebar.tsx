@@ -12,7 +12,8 @@ import {
   Clock,
   Sparkles,
   ShieldCheck,
-  User
+  User,
+  X
 } from 'lucide-react';
 import { UserRole } from '../../types';
 
@@ -133,6 +134,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            aria-label="Close Navigation"
+            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* User Role Badge Banner */}
@@ -219,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" /> Overdue (&gt;48h):
                 </span>
-                <span className="font-bold bg-rose-950/80 border border-rose-800/50 px-1.5 py-0.2 rounded text-rose-300">
+                <span className="font-bold bg-rose-950/80 border border-rose-800/50 px-1.5 py-0.5 rounded text-rose-300">
                   {overdueCount}
                 </span>
               </div>
@@ -227,7 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {approachingCount > 0 && (
               <div className="flex items-center justify-between text-amber-400 py-0.5">
                 <span>Needs Call (&gt;24h):</span>
-                <span className="font-bold bg-amber-950/80 border border-amber-800/50 px-1.5 py-0.2 rounded text-amber-300">
+                <span className="font-bold bg-amber-950/80 border border-amber-800/50 px-1.5 py-0.5 rounded text-amber-300">
                   {approachingCount}
                 </span>
               </div>

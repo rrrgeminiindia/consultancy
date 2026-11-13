@@ -25,12 +25,14 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({ userRole, onResetComplete }) => {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetFeedback, setResetFeedback] = useState<string | null>(null);
+  const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'firebase' | 'data' | 'security'>('firebase');
 
   const fbStatus = FirebaseService.getStatus();
 
   const handleReset = () => {
     StorageService.resetToSampleData();
+    setErrorFeedback(null);
     setResetFeedback('Reset complete! All 8 scenario candidate records restored.');
     setResetConfirm(false);
     onResetComplete();
@@ -59,6 +61,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userRole, onResetCom
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setErrorFeedback(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -72,11 +75,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userRole, onResetCom
         if (parsed.jobOpenings && Array.isArray(parsed.jobOpenings)) {
           StorageService.saveJobOpenings(parsed.jobOpenings);
         }
+        if (parsed.formTemplates && Array.isArray(parsed.formTemplates)) {
+          StorageService.saveFormTemplates(parsed.formTemplates);
+        }
+        if (parsed.emailTemplates && Array.isArray(parsed.emailTemplates)) {
+          StorageService.saveEmailTemplates(parsed.emailTemplates);
+        }
         setResetFeedback('Backup data imported successfully!');
         onResetComplete();
         setTimeout(() => setResetFeedback(null), 3500);
-      } catch (err) {
-        alert('Invalid JSON backup file.');
+      } catch {
+        setErrorFeedback('Invalid JSON backup file. Please export a fresh CandidateFlow backup and try again.');
       }
     };
     reader.readAsText(file);
@@ -93,42 +102,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userRole, onResetCom
         </div>
         <h2 className="text-xl font-bold text-slate-900">Settings & Backend Integration</h2>
         <p className="text-xs text-slate-500 mt-1 max-w-xl">
-          Manage database synchronization, Firebase Authentication & Security Rules, and sample dataset reset.
+          Review active browser storage behavior, required Firebase Authentication & Firestore setup steps, and sample dataset tools.
         </p>
 
         {resetFeedback && (
           <div className="mt-4 p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{resetFeedback}</span>
+          </div>
+        )}
+
+        {errorFeedback && (
+          <div className="mt-4 p-3 bg-rose-50 border border-rose-300 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorFeedback}</span>
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-1 overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveTab('firebase')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 ${
             activeTab === 'firebase'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          Firebase Setup Guide & Status
+          Storage & Firebase Status
         </button>
         <button
           onClick={() => setActiveTab('security')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 ${
             activeTab === 'security'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          Security Rules (RBAC)
+          Security Rules (Draft)
         </button>
         <button
           onClick={() => setActiveTab('data')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 ${
             activeTab === 'data'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -144,26 +160,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userRole, onResetCom
           {/* Connection Status Banner */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-teal-50 text-teal-700 rounded-xl border border-teal-100">
+              <div className="p-3 bg-amber-50 text-amber-700 rounded-xl border border-amber-200">
                 <Database className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900">Current Storage Engine</h3>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 uppercase">
-                    Interactive Persistent Mode
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">Active Storage Mode</h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 uppercase">
+                    {fbStatus.isConfigured ? 'Firebase Config Detected' : 'Local Browser Storage Only'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Reactive local persistence active. Ready for live Google Cloud / Firebase Firestore binding.
+                <p className="text-xs text-slate-600 mt-1 max-w-2xl">
+                  All candidates, teammates, jobs, forms, and email templates currently save to{' '}
+                  <strong>localStorage</strong> in this browser. The header role switcher is a UI preview only — real teammate logins, shared multi-user data, and backend access rules are <strong>not active</strong> until Firebase is provisioned and wired.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <div className="p-2 bg-emerald-50 text-emerald-800 rounded-lg font-semibold flex items-center gap-1.5 border border-emerald-200">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Zero Latency & 100% Operational</span>
+              <div className="p-2 bg-amber-50 text-amber-900 rounded-lg font-semibold flex items-center gap-1.5 border border-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Single-Browser Mode (Firebase Not Connected)</span>
               </div>
             </div>
           </div>
@@ -268,8 +285,8 @@ service cloud.firestore {
         <div className="space-y-5">
           {/* Reset Demo Data */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4 text-xs">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="max-w-xl">
                 <h4 className="text-sm font-bold text-slate-900">Reset Demo & Sample Data</h4>
                 <p className="text-slate-500 mt-0.5">
                   Restores the full suite of fictional test candidates demonstrating all 8 hiring scenarios:
@@ -278,7 +295,7 @@ service cloud.firestore {
               </div>
 
               {resetConfirm ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-rose-600 font-semibold">Are you sure?</span>
                   <button
                     onClick={handleReset}
@@ -296,7 +313,7 @@ service cloud.firestore {
               ) : (
                 <button
                   onClick={() => setResetConfirm(true)}
-                  className="px-4 py-2 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg font-bold inline-flex items-center gap-1.5 transition-colors shadow-2xs"
+                  className="px-4 py-2 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg font-bold inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>Restore Sample Data</span>
@@ -309,10 +326,10 @@ service cloud.firestore {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4 text-xs">
             <h4 className="text-sm font-bold text-slate-900">Export & Import CRM Backup</h4>
             <p className="text-slate-500">
-              Download your complete CRM dataset as a portable JSON file, or restore candidate records from an existing backup.
+              Download your complete local CRM dataset as a portable JSON file, or restore candidate records from an existing backup.
             </p>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 onClick={handleExportBackup}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold inline-flex items-center gap-2 transition-colors shadow-2xs"

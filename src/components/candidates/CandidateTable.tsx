@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Candidate,
   RecruitmentStage,
@@ -11,8 +11,7 @@ import {
 import {
   getCandidateAlertStatus,
   formatDate,
-  formatTimeInStage,
-  areDocumentsComplete
+  formatTimeInStage
 } from '../../utils/helpers';
 import {
   Search,
@@ -22,12 +21,9 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  FileCheck,
-  UserCheck,
   ChevronRight,
   ExternalLink,
-  ShieldCheck,
-  Edit2
+  RotateCcw
 } from 'lucide-react';
 
 interface CandidateTableProps {
@@ -39,7 +35,10 @@ interface CandidateTableProps {
   onUpdateStage: (candidateId: string, stage: RecruitmentStage) => void;
   onQuickToggleResume?: (candidateId: string, status: ResumeStatus) => void;
   onQuickToggleForm?: (candidateId: string, status: CandidateFormStatus) => void;
+  onQuickToggleIdentity?: (candidateId: string, status: IdentityVerificationStatus) => void;
+  onQuickAssignTeammate?: (candidateId: string, teammateId: string) => void;
   externalSearch?: string;
+  initialJobFilter?: string;
 }
 
 export const CandidateTable: React.FC<CandidateTableProps> = ({
@@ -51,17 +50,26 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   onUpdateStage,
   onQuickToggleResume,
   onQuickToggleForm,
-  externalSearch = ''
+  onQuickToggleIdentity,
+  onQuickAssignTeammate,
+  externalSearch = '',
+  initialJobFilter = 'ALL'
 }) => {
   // Local filter states
   const [tableSearch, setTableSearch] = useState('');
-  const [filterJob, setFilterJob] = useState('ALL');
+  const [filterJob, setFilterJob] = useState(initialJobFilter);
   const [filterLocation, setFilterLocation] = useState('ALL');
   const [filterStage, setFilterStage] = useState('ALL');
   const [filterTeammate, setFilterTeammate] = useState('ALL');
   const [filterAlert, setFilterAlert] = useState<'ALL' | 'OVERDUE' | 'APPROACHING' | 'NORMAL'>('ALL');
   const [sortBy, setSortBy] = useState<'applicationDate' | 'nextFollowUpDate' | 'name' | 'experience'>('applicationDate');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  useEffect(() => {
+    if (initialJobFilter) {
+      setFilterJob(initialJobFilter);
+    }
+  }, [initialJobFilter]);
 
   // Stages list for quick dropdown
   const stages: RecruitmentStage[] = [
@@ -75,6 +83,28 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
     'Withdrawn',
     'Closed'
   ];
+  const teammateCallStages: RecruitmentStage[] = [
+    'Ready for Teammate Call',
+    'Call Pending',
+    'Call Completed'
+  ];
+
+  const hasActiveFilters =
+    tableSearch.trim() !== '' ||
+    filterJob !== 'ALL' ||
+    filterLocation !== 'ALL' ||
+    filterStage !== 'ALL' ||
+    filterTeammate !== 'ALL' ||
+    filterAlert !== 'ALL';
+
+  const resetFilters = () => {
+    setTableSearch('');
+    setFilterJob('ALL');
+    setFilterLocation('ALL');
+    setFilterStage('ALL');
+    setFilterTeammate('ALL');
+    setFilterAlert('ALL');
+  };
 
   // Distinct lists for dropdown filters
   const uniqueJobs = useMemo(() => Array.from(new Set(candidates.map((c) => c.jobTitle))), [candidates]);
@@ -147,6 +177,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           valB = parseFloat(b.totalItExperience) || 0;
         }
 
+        if (valA === valB) return 0;
         if (sortOrder === 'asc') {
           return valA > valB ? 1 : -1;
         } else {
@@ -213,8 +244,18 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
             </span>
           </div>
 
-          {/* Quick Sort Options */}
-          <div className="flex items-center gap-2 text-xs">
+          {/* Quick Sort & Reset Options */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="px-2.5 py-1 rounded-md flex items-center gap-1 font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Clear Filters</span>
+              </button>
+            )}
             <span className="text-slate-400">Sort by:</span>
             <button
               onClick={() => toggleSort('applicationDate')}
@@ -361,7 +402,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200 whitespace-nowrap">
-              <th className="py-3 px-3.5 sticky left-0 bg-slate-100 z-10 shadow-r">Candidate Name</th>
+              <th className="py-3 px-3.5 sticky left-0 bg-slate-100 z-10 shadow-xs">Candidate Name</th>
               <th className="py-3 px-3">Alert Status</th>
               <th className="py-3 px-3">Recruitment Stage</th>
               <th className="py-3 px-3">Time in Stage</th>
@@ -369,6 +410,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
               <th className="py-3 px-3">Candidate Form</th>
               <th className="py-3 px-3">Identity Verify</th>
               <th className="py-3 px-3">Assigned Teammate</th>
+              <th className="py-3 px-3">Assignment Date</th>
               <th className="py-3 px-3">Job Title & Location</th>
               <th className="py-3 px-3">IT Experience</th>
               <th className="py-3 px-3">Date Applied</th>
@@ -381,7 +423,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           <tbody className="divide-y divide-slate-100">
             {filteredCandidates.length === 0 ? (
               <tr>
-                <td colSpan={15} className="py-12 text-center text-slate-500">
+                <td colSpan={16} className="py-12 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Search className="w-8 h-8 text-slate-300" />
                     <p className="font-semibold text-slate-700">No candidates found</p>
@@ -409,7 +451,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     }`}
                   >
                     {/* Candidate Name (Sticky) */}
-                    <td className="py-3 px-3.5 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-r">
+                    <td className="py-3 px-3.5 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-xs">
                       <button
                         onClick={() => onSelectCandidate(candidate)}
                         className="text-left font-bold text-slate-900 hover:text-teal-700 transition-colors flex items-center gap-1.5"
@@ -445,11 +487,17 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       <select
                         value={candidate.stage}
                         onChange={(e) => onUpdateStage(candidate.id, e.target.value as RecruitmentStage)}
-                        className={`text-[11px] font-semibold rounded-lg px-2 py-1 border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${getStageBadgeColor(
+                        disabled={userRole === 'TEAMMATE' && !teammateCallStages.includes(candidate.stage)}
+                        className={`text-[11px] font-semibold rounded-lg px-2 py-1 border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 disabled:opacity-65 disabled:cursor-not-allowed ${getStageBadgeColor(
                           candidate.stage
                         )}`}
                       >
-                        {stages.map((stg) => (
+                        {(userRole === 'ADMIN'
+                          ? stages
+                          : teammateCallStages.includes(candidate.stage)
+                          ? teammateCallStages
+                          : [candidate.stage]
+                        ).map((stg) => (
                           <option key={stg} value={stg} className="bg-white text-slate-900">
                             {stg}
                           </option>
@@ -468,15 +516,20 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     {/* Resume Status */}
                     <td className="py-3 px-3 whitespace-nowrap">
                       <button
+                        type="button"
+                        disabled={userRole !== 'ADMIN'}
                         onClick={() =>
+                          userRole === 'ADMIN' &&
                           onQuickToggleResume &&
                           onQuickToggleResume(
                             candidate.id,
                             candidate.resumeStatus === 'Received' ? 'Pending' : 'Received'
                           )
                         }
-                        title="Click to toggle Resume status"
-                        className={`px-2 py-0.5 rounded text-[11px] font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
+                        title={userRole === 'ADMIN' ? 'Click to toggle Resume status' : 'Admin manages documents'}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold border flex items-center gap-1 transition-colors ${
+                          userRole === 'ADMIN' ? 'cursor-pointer' : 'cursor-default opacity-85'
+                        } ${
                           candidate.resumeStatus === 'Received'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                             : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
@@ -494,15 +547,20 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     {/* Candidate Form Status */}
                     <td className="py-3 px-3 whitespace-nowrap">
                       <button
+                        type="button"
+                        disabled={userRole !== 'ADMIN'}
                         onClick={() =>
+                          userRole === 'ADMIN' &&
                           onQuickToggleForm &&
                           onQuickToggleForm(
                             candidate.id,
                             candidate.candidateFormStatus === 'Received' ? 'Pending' : 'Received'
                           )
                         }
-                        title="Click to toggle Form status"
-                        className={`px-2 py-0.5 rounded text-[11px] font-semibold border flex items-center gap-1 cursor-pointer transition-colors ${
+                        title={userRole === 'ADMIN' ? 'Click to toggle Form status' : 'Admin manages documents'}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold border flex items-center gap-1 transition-colors ${
+                          userRole === 'ADMIN' ? 'cursor-pointer' : 'cursor-default opacity-85'
+                        } ${
                           candidate.candidateFormStatus === 'Received'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                             : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
@@ -519,22 +577,55 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
 
                     {/* Identity Verification Status */}
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                          candidate.identityVerificationStatus === 'Verified'
-                            ? 'bg-teal-50 text-teal-800 border-teal-200'
-                            : candidate.identityVerificationStatus === 'Not Required'
-                            ? 'bg-slate-100 text-slate-600 border-slate-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        {candidate.identityVerificationStatus}
-                      </span>
+                      {userRole === 'ADMIN' && onQuickToggleIdentity ? (
+                        <select
+                          value={candidate.identityVerificationStatus}
+                          onChange={(e) =>
+                            onQuickToggleIdentity(candidate.id, e.target.value as IdentityVerificationStatus)
+                          }
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer focus:outline-none ${
+                            candidate.identityVerificationStatus === 'Verified'
+                              ? 'bg-teal-50 text-teal-800 border-teal-200'
+                              : candidate.identityVerificationStatus === 'Not Required'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Verified">Verified</option>
+                          <option value="Not Required">Not Required</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                            candidate.identityVerificationStatus === 'Verified'
+                              ? 'bg-teal-50 text-teal-800 border-teal-200'
+                              : candidate.identityVerificationStatus === 'Not Required'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {candidate.identityVerificationStatus}
+                        </span>
+                      )}
                     </td>
 
                     {/* Assigned Teammate */}
                     <td className="py-3 px-3 whitespace-nowrap">
-                      {candidate.assignedTeammateName ? (
+                      {userRole === 'ADMIN' && onQuickAssignTeammate ? (
+                        <select
+                          value={candidate.assignedTeammateId || ''}
+                          onChange={(e) => onQuickAssignTeammate(candidate.id, e.target.value)}
+                          className="bg-white border border-slate-200 rounded-md px-2 py-1 text-[11px] font-medium text-slate-800 focus:outline-none focus:border-teal-500"
+                        >
+                          <option value="">Unassigned</option>
+                          {teammates.map((tm) => (
+                            <option key={tm.id} value={tm.id}>
+                              {tm.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : candidate.assignedTeammateName ? (
                         <div className="flex items-center gap-1.5 font-medium text-slate-800">
                           <div className="w-5 h-5 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center text-[10px] font-bold">
                             {candidate.assignedTeammateName.charAt(0)}
@@ -544,6 +635,11 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       ) : (
                         <span className="text-slate-400 italic">Unassigned</span>
                       )}
+                    </td>
+
+                    {/* Assignment Date */}
+                    <td className="py-3 px-3 whitespace-nowrap text-slate-600">
+                      {formatDate(candidate.assignmentDate)}
                     </td>
 
                     {/* Job Title & Location */}

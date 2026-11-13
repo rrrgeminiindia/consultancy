@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Candidate,
   CandidateFormTemplate,
   EmailTemplate,
+  JobOpening,
   RecruitmentStage,
   ResumeStatus,
   CandidateFormStatus,
@@ -17,7 +18,8 @@ import {
   formatDateTime,
   formatTimeInStage,
   getMissingFormFields,
-  areDocumentsComplete
+  areDocumentsComplete,
+  interpolateEmail
 } from '../../utils/helpers';
 import { StorageService } from '../../services/storage';
 import {
@@ -51,9 +53,11 @@ interface CandidateProfileModalProps {
   onClose: () => void;
   formTemplates: CandidateFormTemplate[];
   emailTemplates: EmailTemplate[];
+  jobOpenings?: JobOpening[];
   teammates: Teammate[];
   userRole: UserRole;
   currentUserId: string;
+  currentUserName?: string;
   onCandidateUpdated: (updated: Candidate) => void;
   onCandidateDeleted: (id: string) => void;
   onOpenEmailModal?: (candidate: Candidate) => void;
@@ -65,9 +69,11 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
   onClose,
   formTemplates,
   emailTemplates,
+  jobOpenings = [],
   teammates,
   userRole,
   currentUserId,
+  currentUserName = 'Alex Mercer',
   onCandidateUpdated,
   onCandidateDeleted,
   onOpenEmailModal
@@ -77,6 +83,12 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
   // Edit details mode
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({ ...candidate });
+
+  // Form response editor state
+  const [isEditingFormResponses, setIsEditingFormResponses] = useState(false);
+  const [formResponsesDraft, setFormResponsesDraft] = useState<Record<string, string>>({
+    ...(candidate.formResponses || {})
+  });
 
   // Call logging form state
   const [showCallForm, setShowCallForm] = useState(false);
@@ -92,33 +104,68 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
   // Manual Email Record logging
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [selectedEmailTplId, setSelectedEmailTplId] = useState(emailTemplates[0]?.id || '');
-  const [manualEmailSubject, setManualEmailSubject] = useState(emailTemplates[0]?.subject || '');
+  const [manualEmailSubject, setManualEmailSubject] = useState('');
+  const [manualEmailDate, setManualEmailDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualEmailNotes, setManualEmailNotes] = useState('');
 
   // Delete confirmation
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Sync draft states whenever candidate changes or modal reopens
+  useEffect(() => {
+    setEditFormData({ ...candidate });
+    setFormResponsesDraft({ ...(candidate.formResponses || {}) });
+    setIsEditing(false);
+    setIsEditingFormResponses(false);
+    setConfirmDelete(false);
+    setShowCallForm(false);
+    setShowEmailForm(false);
+    const firstTpl = emailTemplates[0];
+    if (firstTpl) {
+      setSelectedEmailTplId(firstTpl.id);
+      setManualEmailSubject(interpolateEmail(firstTpl.subject, candidate, currentUserName));
+    }
+    setManualEmailDate(new Date().toISOString().split('T')[0]);
+    setManualEmailNotes('');
+  }, [candidate.id, isOpen]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditFormData({ ...candidate });
+    }
+    if (!isEditingFormResponses) {
+      setFormResponsesDraft({ ...(candidate.formResponses || {}) });
+    }
+  }, [candidate, isEditing, isEditingFormResponses]);
+
   if (!isOpen) return null;
 
   const alert = getCandidateAlertStatus(candidate);
+  const matchedJob = jobOpenings.find((j) => j.title === candidate.jobTitle);
   const matchedTemplate =
-    formTemplates.find((t) => t.jobOpeningId === candidate.linkedInJobOpening) ||
-    formTemplates[0];
+    formTemplates.find(
+      (t) =>
+        (matchedJob && (t.id === matchedJob.formTemplateId || t.jobOpeningId === matchedJob.id)) ||
+        t.jobOpeningId === candidate.linkedInJobOpening
+    ) || formTemplates[0];
 
   const missingFieldsData = getMissingFormFields(candidate, matchedTemplate);
   const docsComplete = areDocumentsComplete(candidate);
 
-  const stages: RecruitmentStage[] = [
-    'New Candidate',
-    'Initial Email Sent',
-    'Documents Pending',
-    'Documents Received',
-    'Ready for Teammate Call',
-    'Call Pending',
-    'Call Completed',
-    'Withdrawn',
-    'Closed'
-  ];
+  const stages: RecruitmentStage[] =
+    userRole === 'ADMIN'
+      ? [
+          'New Candidate',
+          'Initial Email Sent',
+          'Documents Pending',
+          'Documents Received',
+          'Ready for Teammate Call',
+          'Call Pending',
+          'Call Completed',
+          'Withdrawn',
+          'Closed'
+        ]
+      : ['Ready for Teammate Call', 'Call Pending', 'Call Completed'];
 
   const handleStageChange = (newStage: RecruitmentStage) => {
     const updated = StorageService.updateCandidate(candidate.id, { stage: newStage });
@@ -192,17 +239,32 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
   const handleRecordEmail = (e: React.FormEvent) => {
     e.preventDefault();
     const tpl = emailTemplates.find((t) => t.id === selectedEmailTplId);
+    const interpolatedBody = tpl ? interpolateEmail(tpl.body, candidate, currentUserName) : 'Email logged manually';
     const updated = StorageService.addEmailLog(candidate.id, {
       templateId: selectedEmailTplId,
       templateTitle: tpl ? tpl.title : 'Manual Recruiter Email',
       recipientEmail: candidate.email,
       subject: manualEmailSubject,
-      content: manualEmailNotes || (tpl ? tpl.body : 'Email logged manually')
+      content: manualEmailNotes.trim() || interpolatedBody,
+      sentAt: manualEmailDate ? new Date(`${manualEmailDate}T12:00:00`).toISOString() : undefined
     });
     if (updated) {
       onCandidateUpdated(updated);
       setShowEmailForm(false);
       setManualEmailNotes('');
+    }
+  };
+
+  const handleSaveFormResponses = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated = StorageService.updateCandidate(
+      candidate.id,
+      { formResponses: formResponsesDraft },
+      'Updated candidate form field responses'
+    );
+    if (updated) {
+      onCandidateUpdated(updated);
+      setIsEditingFormResponses(false);
     }
   };
 
@@ -272,8 +334,15 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
             <select
               value={candidate.stage}
               onChange={(e) => handleStageChange(e.target.value as RecruitmentStage)}
-              className="bg-white border border-slate-300 rounded-lg font-bold text-slate-900 text-xs px-2.5 py-1 focus:outline-none focus:border-teal-500 shadow-2xs"
+              disabled={
+                userRole === 'TEAMMATE' &&
+                !['Ready for Teammate Call', 'Call Pending', 'Call Completed'].includes(candidate.stage)
+              }
+              className="bg-white border border-slate-300 rounded-lg font-bold text-slate-900 text-xs px-2.5 py-1 focus:outline-none focus:border-teal-500 shadow-2xs disabled:opacity-60"
             >
+              {!stages.includes(candidate.stage) && (
+                <option value={candidate.stage}>{candidate.stage}</option>
+              )}
               {stages.map((stg) => (
                 <option key={stg} value={stg}>
                   {stg}
@@ -310,7 +379,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white">
+        <div className="flex items-center gap-1 px-4 sm:px-6 border-b border-slate-200 bg-white overflow-x-auto whitespace-nowrap shrink-0">
           {[
             { id: 'overview', label: 'Candidate Details', icon: User },
             { id: 'documents', label: 'Document Checklist', icon: FileCheck },
@@ -324,7 +393,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+                className={`py-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors shrink-0 ${
                   isActive
                     ? 'border-teal-600 text-teal-700'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -425,6 +494,91 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                         value={editFormData.noticePeriod}
                         onChange={(e) =>
                           setEditFormData({ ...editFormData, noticePeriod: e.target.value })
+                        }
+                        className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Job Title</label>
+                      {jobOpenings.length > 0 ? (
+                        <select
+                          value={editFormData.jobTitle}
+                          onChange={(e) => {
+                            const matched = jobOpenings.find((j) => j.title === e.target.value);
+                            setEditFormData({
+                              ...editFormData,
+                              jobTitle: e.target.value,
+                              jobLocation: matched ? matched.location : editFormData.jobLocation
+                            });
+                          }}
+                          className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white"
+                        >
+                          {!jobOpenings.some((j) => j.title === editFormData.jobTitle) && (
+                            <option value={editFormData.jobTitle}>{editFormData.jobTitle}</option>
+                          )}
+                          {jobOpenings.map((j) => (
+                            <option key={j.id} value={j.title}>
+                              {j.title}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={editFormData.jobTitle}
+                          onChange={(e) =>
+                            setEditFormData({ ...editFormData, jobTitle: e.target.value })
+                          }
+                          className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Job Location</label>
+                      <input
+                        type="text"
+                        value={editFormData.jobLocation}
+                        onChange={(e) =>
+                          setEditFormData({ ...editFormData, jobLocation: e.target.value })
+                        }
+                        className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">LinkedIn Job Opening</label>
+                      <input
+                        type="text"
+                        value={editFormData.linkedInJobOpening}
+                        onChange={(e) =>
+                          setEditFormData({ ...editFormData, linkedInJobOpening: e.target.value })
+                        }
+                        className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Application Date</label>
+                      <input
+                        type="date"
+                        value={editFormData.applicationDate ? editFormData.applicationDate.split('T')[0] : ''}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            applicationDate: e.target.value ? new Date(e.target.value).toISOString() : editFormData.applicationDate
+                          })
+                        }
+                        className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Next Follow-Up Date</label>
+                      <input
+                        type="date"
+                        value={editFormData.nextFollowUpDate ? editFormData.nextFollowUpDate.split('T')[0] : ''}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            nextFollowUpDate: e.target.value ? new Date(`${e.target.value}T12:00:00`).toISOString() : null
+                          })
                         }
                         className="w-full p-2 border border-slate-300 rounded-lg text-xs"
                       />
@@ -579,19 +733,21 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                       Required for technical evaluation and teammate screening.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                    <button
-                      onClick={() =>
-                        handleDocumentStatusToggle(
-                          'resume',
-                          candidate.resumeStatus === 'Received' ? 'Pending' : 'Received'
-                        )
-                      }
-                      className="w-full py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold text-slate-700 transition-colors"
-                    >
-                      Set as {candidate.resumeStatus === 'Received' ? 'Pending' : 'Received'}
-                    </button>
-                  </div>
+                  {userRole === 'ADMIN' && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                      <button
+                        onClick={() =>
+                          handleDocumentStatusToggle(
+                            'resume',
+                            candidate.resumeStatus === 'Received' ? 'Pending' : 'Received'
+                          )
+                        }
+                        className="w-full py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold text-slate-700 transition-colors"
+                      >
+                        Set as {candidate.resumeStatus === 'Received' ? 'Pending' : 'Received'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Candidate Information Form Card */}
@@ -613,19 +769,21 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                       Questionnaire: notice period, work authorization, interview availability.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                    <button
-                      onClick={() =>
-                        handleDocumentStatusToggle(
-                          'form',
-                          candidate.candidateFormStatus === 'Received' ? 'Pending' : 'Received'
-                        )
-                      }
-                      className="w-full py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold text-slate-700 transition-colors"
-                    >
-                      Set as {candidate.candidateFormStatus === 'Received' ? 'Pending' : 'Received'}
-                    </button>
-                  </div>
+                  {userRole === 'ADMIN' && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                      <button
+                        onClick={() =>
+                          handleDocumentStatusToggle(
+                            'form',
+                            candidate.candidateFormStatus === 'Received' ? 'Pending' : 'Received'
+                          )
+                        }
+                        className="w-full py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold text-slate-700 transition-colors"
+                      >
+                        Set as {candidate.candidateFormStatus === 'Received' ? 'Pending' : 'Received'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Identity Verification Status (Non-blocking) */}
@@ -646,35 +804,55 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mb-1">
-                      Audit verification status. Note: Never stores national ID or passport numbers.
+                      Audit verification status (non-blocking). Never stores national ID or passport numbers.
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200">
-                    <button
-                      onClick={() => handleDocumentStatusToggle('identity', 'Verified')}
-                      className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-teal-700"
-                    >
-                      Verified
-                    </button>
-                    <button
-                      onClick={() => handleDocumentStatusToggle('identity', 'Pending')}
-                      className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-amber-700"
-                    >
-                      Pending
-                    </button>
-                    <button
-                      onClick={() => handleDocumentStatusToggle('identity', 'Not Required')}
-                      className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-600"
-                    >
-                      Skip
-                    </button>
-                  </div>
+                  {userRole === 'ADMIN' && (
+                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200">
+                      <button
+                        onClick={() => handleDocumentStatusToggle('identity', 'Verified')}
+                        className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-teal-700"
+                      >
+                        Verified
+                      </button>
+                      <button
+                        onClick={() => handleDocumentStatusToggle('identity', 'Pending')}
+                        className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-amber-700"
+                      >
+                        Pending
+                      </button>
+                      <button
+                        onClick={() => handleDocumentStatusToggle('identity', 'Not Required')}
+                        className="flex-1 py-1 text-[11px] bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-600"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Missing Fields Breakdown Section */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
+              {/* Document completeness banner */}
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                  docsComplete
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}
+              >
+                <span className="font-semibold">
+                  {docsComplete
+                    ? 'Mandatory documents (Resume & Candidate Form) are complete — ready for teammate call!'
+                    : 'Mandatory documents pending: Resume and Candidate Information Form are required before call.'}
+                </span>
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/80">
+                  Identity Non-Blocking
+                </span>
+              </div>
+
+              {/* Missing Fields Breakdown & Editable Responses */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h4 className="text-sm font-bold text-slate-900">
                       Candidate Information Form Field Completion
@@ -683,9 +861,20 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                       Template: <strong>{matchedTemplate?.title || 'Standard IT Form'}</strong>
                     </p>
                   </div>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
-                    {missingFieldsData.completedCount} / {missingFieldsData.totalCount} Fields Complete
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                      {missingFieldsData.completedCount} / {missingFieldsData.totalCount} Fields Complete
+                    </span>
+                    {userRole === 'ADMIN' && matchedTemplate && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingFormResponses(!isEditingFormResponses)}
+                        className="px-3 py-1 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700"
+                      >
+                        {isEditingFormResponses ? 'Cancel' : 'Edit Form Fields'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {missingFieldsData.missingRequired.length > 0 ? (
@@ -710,6 +899,87 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span>All mandatory fields for this job opening have been completed!</span>
                   </div>
+                )}
+
+                {missingFieldsData.missingOptional.length > 0 && (
+                  <div className="text-[11px] text-slate-500">
+                    <span className="font-semibold">Optional fields not filled:</span>{' '}
+                    {missingFieldsData.missingOptional.join(', ')}
+                  </div>
+                )}
+
+                {isEditingFormResponses && matchedTemplate && (
+                  <form onSubmit={handleSaveFormResponses} className="pt-3 border-t border-slate-200 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      {matchedTemplate.fields.map((field) => (
+                        <div key={field.id} className={field.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                          <label className="block font-semibold text-slate-700 mb-1">
+                            {field.label} {field.required && <span className="text-rose-500">*</span>}
+                          </label>
+                          {field.type === 'select' ? (
+                            <select
+                              value={formResponsesDraft[field.name] || ''}
+                              onChange={(e) =>
+                                setFormResponsesDraft({
+                                  ...formResponsesDraft,
+                                  [field.name]: e.target.value
+                                })
+                              }
+                              className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white"
+                            >
+                              <option value="">-- Not Provided --</option>
+                              {field.options?.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : field.type === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              placeholder={field.placeholder || ''}
+                              value={formResponsesDraft[field.name] || ''}
+                              onChange={(e) =>
+                                setFormResponsesDraft({
+                                  ...formResponsesDraft,
+                                  [field.name]: e.target.value
+                                })
+                              }
+                              className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                            />
+                          ) : (
+                            <input
+                              type={field.type}
+                              placeholder={field.placeholder || ''}
+                              value={formResponsesDraft[field.name] || ''}
+                              onChange={(e) =>
+                                setFormResponsesDraft({
+                                  ...formResponsesDraft,
+                                  [field.name]: e.target.value
+                                })
+                              }
+                              className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingFormResponses(false)}
+                        className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold"
+                      >
+                        Save Form Responses
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
             </div>
@@ -780,7 +1050,11 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                     <label className="block font-semibold text-slate-700 mb-1">Call Outcome</label>
                     <select
                       value={callOutcome}
-                      onChange={(e) => setCallOutcome(e.target.value as any)}
+                      onChange={(e) => {
+                        const nextOutcome = e.target.value as CallOutcome;
+                        setCallOutcome(nextOutcome);
+                        setMarkCompletedOnLog(nextOutcome === 'Completed');
+                      }}
                       className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
                     >
                       <option value="Completed">Completed (Successful Screening)</option>
@@ -914,17 +1188,17 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                   onSubmit={handleRecordEmail}
                   className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs"
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">
-                        Template Used
+                        Email Type / Template Used
                       </label>
                       <select
                         value={selectedEmailTplId}
                         onChange={(e) => {
                           setSelectedEmailTplId(e.target.value);
                           const t = emailTemplates.find((x) => x.id === e.target.value);
-                          if (t) setManualEmailSubject(t.subject);
+                          if (t) setManualEmailSubject(interpolateEmail(t.subject, candidate, currentUserName));
                         }}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
                       >
@@ -934,6 +1208,19 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Sent Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={manualEmailDate}
+                        onChange={(e) => setManualEmailDate(e.target.value)}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                      />
                     </div>
 
                     <div>

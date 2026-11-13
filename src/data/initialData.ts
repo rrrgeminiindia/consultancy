@@ -143,6 +143,28 @@ export const INITIAL_FORM_TEMPLATES: CandidateFormTemplate[] = [
     ],
     createdAt: '2026-10-20T10:00:00Z',
     updatedAt: '2026-10-20T10:00:00Z'
+  },
+  {
+    id: 'template-data',
+    title: 'Data Architecture & Analytics Candidate Form',
+    jobOpeningId: 'job-3',
+    description: 'Data engineering & Snowflake/Spark questionnaire covering warehouse scale and availability.',
+    fields: [
+      { id: 'f-first-name', name: 'firstName', label: 'First Name', type: 'text', required: true },
+      { id: 'f-last-name', name: 'lastName', label: 'Last Name', type: 'text', required: true },
+      { id: 'f-email', name: 'email', label: 'Email Address', type: 'email', required: true },
+      { id: 'f-phone', name: 'phone', label: 'Phone Number', type: 'tel', required: true },
+      { id: 'f-education', name: 'education', label: 'Highest Degree', type: 'select', required: true, options: ["Bachelor's in CS / IT", "Master's in CS / IT", 'PhD', 'Other'] },
+      { id: 'f-curr-loc', name: 'currentLocation', label: 'Current Location', type: 'text', required: true },
+      { id: 'f-visa', name: 'visaStatus', label: 'Work Authorization / Visa', type: 'select', required: true, options: ['US Citizen', 'Permanent Resident', 'H1B', 'Other'] },
+      { id: 'f-employer', name: 'currentEmployer', label: 'Current Employer', type: 'text', required: true },
+      { id: 'f-it-exp', name: 'totalItExperience', label: 'Total IT Experience (Years)', type: 'number', required: true },
+      { id: 'f-notice', name: 'noticePeriod', label: 'Notice Period', type: 'select', required: true, options: ['Immediate', '2 Weeks', '30 Days', '60 Days'] },
+      { id: 'f-reloc', name: 'relocation', label: 'Open to Hybrid / Relocation', type: 'select', required: true, options: ['Already Local', 'Open to Relocation', 'Remote Only'] },
+      { id: 'f-interview-avail', name: 'interviewAvailability', label: 'Interview Availability', type: 'textarea', required: true }
+    ],
+    createdAt: '2026-11-01T11:00:00Z',
+    updatedAt: '2026-11-01T11:00:00Z'
   }
 ];
 
@@ -297,12 +319,15 @@ CandidateFlow`
   }
 ];
 
-// Helper to get ISO strings in the past
-const now = new Date('2026-11-12T12:58:00Z');
-const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3600 * 1000).toISOString();
-const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 3600 * 1000).toISOString();
+export function createInitialCandidates(): Candidate[] {
+  const now = new Date();
+  const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3600 * 1000).toISOString();
+  const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 3600 * 1000).toISOString();
+  const hoursFromNow = (hours: number) => new Date(now.getTime() + hours * 3600 * 1000).toISOString();
+  const dateStrDaysAgo = (days: number) =>
+    new Date(now.getTime() - days * 24 * 3600 * 1000).toISOString().split('T')[0];
 
-export const INITIAL_CANDIDATES: Candidate[] = [
+  return [
   // 1. New Candidate (Just applied, no email sent yet)
   {
     id: 'cand-101',
@@ -327,7 +352,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     candidateFormStatus: 'Pending',
     identityVerificationStatus: 'Pending',
     lastContactDate: null,
-    nextFollowUpDate: new Date(now.getTime() + 24 * 3600 * 1000).toISOString(),
+    nextFollowUpDate: hoursFromNow(24),
     callPendingStartedAt: null,
     stageEnteredAt: hoursAgo(4),
     formResponses: {},
@@ -505,7 +530,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     candidateFormStatus: 'Received',
     identityVerificationStatus: 'Verified',
     lastContactDate: daysAgo(1),
-    nextFollowUpDate: new Date(now.getTime() + 12 * 3600 * 1000).toISOString(),
+    nextFollowUpDate: hoursFromNow(12),
     callPendingStartedAt: null,
     stageEnteredAt: daysAgo(1),
     formResponses: {
@@ -583,7 +608,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     candidateFormStatus: 'Received',
     identityVerificationStatus: 'Not Required',
     lastContactDate: hoursAgo(10),
-    nextFollowUpDate: new Date(now.getTime() + 14 * 3600 * 1000).toISOString(),
+    nextFollowUpDate: hoursFromNow(14),
     callPendingStartedAt: null,
     stageEnteredAt: hoursAgo(10),
     formResponses: {
@@ -691,7 +716,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
         candidateId: 'cand-106',
         teammateId: 'tm-1',
         teammateName: 'Sarah Jenkins',
-        callDate: '2026-11-11',
+        callDate: dateStrDaysAgo(1),
         callTime: '14:30',
         durationMinutes: 2,
         outcome: 'Left Voicemail',
@@ -765,7 +790,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
         candidateId: 'cand-107',
         teammateId: 'tm-3',
         teammateName: 'Priya Sharma',
-        callDate: '2026-11-10',
+        callDate: dateStrDaysAgo(2),
         callTime: '11:00',
         durationMinutes: 1,
         outcome: 'No Answer / Busy',
@@ -802,7 +827,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     candidateFormStatus: 'Received',
     identityVerificationStatus: 'Verified',
     lastContactDate: hoursAgo(8),
-    nextFollowUpDate: new Date(now.getTime() + 48 * 3600 * 1000).toISOString(),
+    nextFollowUpDate: hoursFromNow(48),
     callPendingStartedAt: daysAgo(2),
     stageEnteredAt: hoursAgo(8),
     formResponses: {
@@ -839,7 +864,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
         candidateId: 'cand-108',
         teammateId: 'tm-2',
         teammateName: 'Marcus Chen',
-        callDate: '2026-11-12',
+        callDate: dateStrDaysAgo(0),
         callTime: '10:15',
         durationMinutes: 28,
         outcome: 'Completed',
@@ -851,4 +876,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     createdAt: daysAgo(8),
     updatedAt: hoursAgo(8)
   }
-];
+  ];
+}
+
+export const INITIAL_CANDIDATES: Candidate[] = createInitialCandidates();

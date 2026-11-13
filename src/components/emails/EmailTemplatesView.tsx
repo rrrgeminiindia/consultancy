@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Candidate, EmailTemplate, UserRole } from '../../types';
 import { interpolateEmail } from '../../utils/helpers';
 import { StorageService } from '../../services/storage';
@@ -52,6 +52,14 @@ export const EmailTemplatesView: React.FC<EmailTemplatesViewProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [loggedCandidateFeedback, setLoggedCandidateFeedback] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (preselectedCandidateId && candidates.some((c) => c.id === preselectedCandidateId)) {
+      setSelectedCandidateId(preselectedCandidateId);
+    } else if (!candidates.some((c) => c.id === selectedCandidateId)) {
+      setSelectedCandidateId(candidates[0]?.id || '');
+    }
+  }, [preselectedCandidateId, candidates, selectedCandidateId]);
+
   const activeTemplate =
     emailTemplates.find((t) => t.id === selectedTemplateId) || emailTemplates[0];
   const activeCandidate = candidates.find((c) => c.id === selectedCandidateId);
@@ -80,11 +88,28 @@ export const EmailTemplatesView: React.FC<EmailTemplatesViewProps> = ({
 
   const handleCopyClipboard = async (textToCopy: string, key: string) => {
     try {
-      await navigator.clipboard.writeText(textToCopy);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 2500);
-    } catch (err) {
-      console.error('Failed to copy', err);
+    } catch {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = textToCopy;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2500);
+      } catch (err) {
+        console.error('Failed to copy', err);
+      }
     }
   };
 
@@ -216,13 +241,18 @@ export const EmailTemplatesView: React.FC<EmailTemplatesViewProps> = ({
             <select
               value={selectedCandidateId}
               onChange={(e) => setSelectedCandidateId(e.target.value)}
-              className="bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-teal-500 max-w-xs"
+              disabled={candidates.length === 0}
+              className="bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-teal-500 max-w-xs w-full sm:w-auto"
             >
-              {candidates.map((cand) => (
-                <option key={cand.id} value={cand.id}>
-                  {cand.fullName} ({cand.jobTitle})
-                </option>
-              ))}
+              {candidates.length === 0 ? (
+                <option value="">No assigned candidates available</option>
+              ) : (
+                candidates.map((cand) => (
+                  <option key={cand.id} value={cand.id}>
+                    {cand.fullName} ({cand.jobTitle})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 

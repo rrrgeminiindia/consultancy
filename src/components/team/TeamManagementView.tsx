@@ -1,20 +1,16 @@
 import React, { useState } from 'react';
 import { Candidate, Teammate, UserRole } from '../../types';
 import { StorageService } from '../../services/storage';
-import { getCandidateAlertStatus } from '../../utils/helpers';
+import { formatDate, getCandidateAlertStatus } from '../../utils/helpers';
 import {
-  UserCheck,
   Plus,
-  PhoneCall,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
   Mail,
   Phone,
   X,
-  Users,
-  ShieldCheck,
-  BarChart2
+  ExternalLink,
+  AlertTriangle,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 
 interface TeamManagementViewProps {
@@ -40,9 +36,7 @@ export const TeamManagementView: React.FC<TeamManagementViewProps> = ({
   const [phone, setPhone] = useState('');
   const [title, setTitle] = useState('Technical Recruiter');
   const [maxCapacity, setMaxCapacity] = useState(15);
-
-  const [reassignCandidateId, setReassignCandidateId] = useState<string | null>(null);
-  const [targetTeammateId, setTargetTeammateId] = useState<string>('');
+  const [selectedTeammateFilter, setSelectedTeammateFilter] = useState<string>('ALL');
 
   const handleCreateTeammate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,23 +58,24 @@ export const TeamManagementView: React.FC<TeamManagementViewProps> = ({
     setPhone('');
   };
 
-  const handleReassign = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reassignCandidateId) return;
-
-    const tm = teammates.find((t) => t.id === targetTeammateId);
+  const handleDirectAssign = (candidateId: string, newTeammateId: string) => {
+    const tm = teammates.find((t) => t.id === newTeammateId);
     StorageService.updateCandidate(
-      reassignCandidateId,
+      candidateId,
       {
-        assignedTeammateId: targetTeammateId || null,
+        assignedTeammateId: newTeammateId || null,
         assignedTeammateName: tm ? tm.name : null,
-        assignmentDate: targetTeammateId ? new Date().toISOString() : null
+        assignmentDate: newTeammateId ? new Date().toISOString() : null
       },
-      `Reassigned candidate to ${tm ? tm.name : 'Unassigned'}`
+      `Assigned to ${tm ? tm.name : 'Unassigned'} from Team Management`
     );
-
-    setReassignCandidateId(null);
   };
+
+  const queueCandidates = candidates.filter((c) => {
+    if (selectedTeammateFilter === 'ALL') return true;
+    if (selectedTeammateFilter === 'UNASSIGNED') return !c.assignedTeammateId;
+    return c.assignedTeammateId === selectedTeammateFilter;
+  });
 
   return (
     <div className="space-y-6">
@@ -211,13 +206,119 @@ export const TeamManagementView: React.FC<TeamManagementViewProps> = ({
                     onClick={() => onSwitchToTeammateView(tm)}
                     className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition-colors"
                   >
-                    Switch to {tm.name.split(' ')[0]}'s View
+                    Preview {tm.name.split(' ')[0]}'s View
                   </button>
                 )}
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Candidate Assignment & Call Queue Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">
+              Candidate Assignments & Call Queue
+            </h3>
+            <p className="text-xs text-slate-500">
+              Assign or reassign candidates across teammates and track pending/overdue calls.
+            </p>
+          </div>
+          <select
+            value={selectedTeammateFilter}
+            onChange={(e) => setSelectedTeammateFilter(e.target.value)}
+            className="p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 bg-slate-50"
+          >
+            <option value="ALL">All Candidates ({candidates.length})</option>
+            <option value="UNASSIGNED">
+              Unassigned ({candidates.filter((c) => !c.assignedTeammateId).length})
+            </option>
+            {teammates.map((tm) => (
+              <option key={tm.id} value={tm.id}>
+                {tm.name} ({candidates.filter((c) => c.assignedTeammateId === tm.id).length})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 whitespace-nowrap">
+                <th className="py-2.5 px-4">Candidate</th>
+                <th className="py-2.5 px-4">Stage</th>
+                <th className="py-2.5 px-4">Call / Follow-Up Alert</th>
+                <th className="py-2.5 px-4">Assigned Teammate</th>
+                <th className="py-2.5 px-4">Assigned On</th>
+                <th className="py-2.5 px-4 text-right">Profile</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {queueCandidates.map((cand) => {
+                const alert = getCandidateAlertStatus(cand);
+                return (
+                  <tr key={cand.id} className="hover:bg-slate-50">
+                    <td className="py-2.5 px-4">
+                      <p className="font-bold text-slate-900">{cand.fullName}</p>
+                      <p className="text-[11px] text-slate-500">{cand.jobTitle}</p>
+                    </td>
+                    <td className="py-2.5 px-4 whitespace-nowrap font-medium text-slate-700">
+                      {cand.stage}
+                    </td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">
+                      {alert.status === 'Overdue' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold text-[11px]">
+                          <AlertTriangle className="w-3 h-3" /> {alert.badgeText}
+                        </span>
+                      ) : alert.status === 'Approaching' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[11px]">
+                          <Clock className="w-3 h-3" /> {alert.badgeText}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px]">
+                          <CheckCircle2 className="w-3 h-3 text-slate-400" /> {alert.badgeText}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">
+                      {userRole === 'ADMIN' ? (
+                        <select
+                          value={cand.assignedTeammateId || ''}
+                          onChange={(e) => handleDirectAssign(cand.id, e.target.value)}
+                          className="p-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium text-slate-800"
+                        >
+                          <option value="">Unassigned</option>
+                          {teammates.map((tm) => (
+                            <option key={tm.id} value={tm.id}>
+                              {tm.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{cand.assignedTeammateName || 'Unassigned'}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 whitespace-nowrap text-slate-600">
+                      {formatDate(cand.assignmentDate)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => onSelectCandidate(cand)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 rounded-lg font-semibold inline-flex items-center gap-1"
+                      >
+                        <span>Open</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Add Teammate Modal */}

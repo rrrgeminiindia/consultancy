@@ -1,0 +1,20 @@
+[project]
+name = "bench-management-workspace"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["services/portal-api", "services/company-api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+addopts = "-q --import-mode=importlib"
+testpaths = ["services/portal-api/tests", "services/company-api/tests"]
+

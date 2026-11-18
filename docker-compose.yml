@@ -1,0 +1,66 @@
+services:
+  portal-db:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_DB: ${PORTAL_DB_NAME:-portal_control}
+      POSTGRES_USER: ${PORTAL_DB_USER:-portal_app}
+      POSTGRES_PASSWORD: ${PORTAL_DB_PASSWORD:-change-me-portal}
+    ports:
+      - "127.0.0.1:${PORTAL_DB_PORT:-5542}:5432"
+    volumes:
+      - portal-db-data:/var/lib/postgresql/data
+      - ./database/portal:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PORTAL_DB_USER:-portal_app} -d ${PORTAL_DB_NAME:-portal_control}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  flyhigh-db:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_DB: ${FLYHIGH_DB_NAME:-flyhigh_recruitment}
+      POSTGRES_USER: ${FLYHIGH_DB_USER:-flyhigh_app}
+      POSTGRES_PASSWORD: ${FLYHIGH_DB_PASSWORD:-change-me-flyhigh}
+    ports:
+      - "127.0.0.1:${FLYHIGH_DB_PORT:-5543}:5432"
+    volumes:
+      - flyhigh-db-data:/var/lib/postgresql/data
+      - ./database/company/001_extensions_and_types.sql:/docker-entrypoint-initdb.d/001_extensions_and_types.sql:ro
+      - ./database/company/010_schema.sql:/docker-entrypoint-initdb.d/010_schema.sql:ro
+      - ./database/company/020_constraints_and_triggers.sql:/docker-entrypoint-initdb.d/020_constraints_and_triggers.sql:ro
+      - ./database/seeds/flyhigh.sql:/docker-entrypoint-initdb.d/100_company_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FLYHIGH_DB_USER:-flyhigh_app} -d ${FLYHIGH_DB_NAME:-flyhigh_recruitment}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  dattai-db:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_DB: ${DATTAI_DB_NAME:-dattai_recruitment}
+      POSTGRES_USER: ${DATTAI_DB_USER:-dattai_app}
+      POSTGRES_PASSWORD: ${DATTAI_DB_PASSWORD:-change-me-dattai}
+    ports:
+      - "127.0.0.1:${DATTAI_DB_PORT:-5544}:5432"
+    volumes:
+      - dattai-db-data:/var/lib/postgresql/data
+      - ./database/company/001_extensions_and_types.sql:/docker-entrypoint-initdb.d/001_extensions_and_types.sql:ro
+      - ./database/company/010_schema.sql:/docker-entrypoint-initdb.d/010_schema.sql:ro
+      - ./database/company/020_constraints_and_triggers.sql:/docker-entrypoint-initdb.d/020_constraints_and_triggers.sql:ro
+      - ./database/seeds/dattai.sql:/docker-entrypoint-initdb.d/100_company_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATTAI_DB_USER:-dattai_app} -d ${DATTAI_DB_NAME:-dattai_recruitment}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  portal-db-data:
+  flyhigh-db-data:
+  dattai-db-data:
+

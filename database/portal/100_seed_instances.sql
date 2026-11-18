@@ -1,0 +1,51 @@
+BEGIN;
+
+INSERT INTO company_instances (
+  id,
+  instance_code,
+  legal_name,
+  display_name,
+  slug,
+  base_url,
+  status,
+  deployment_version,
+  database_secret_ref,
+  storage_ref,
+  auth_issuer,
+  auth_client_id,
+  infrastructure_ref
+)
+VALUES
+  (
+    '11111111-1111-4111-8111-111111111111',
+    'flyhigh',
+    'FlyHigh',
+    'FlyHigh',
+    'flyhigh',
+    'http://localhost:3001',
+    'ACTIVE',
+    '0.1.0',
+    'local/database/flyhigh',
+    'local/storage/flyhigh',
+    'http://localhost:8080/realms/bench-management',
+    'flyhigh-console',
+    'local-docker/flyhigh'
+  ),
+  (
+    '22222222-2222-4222-8222-222222222222',
+    'dattai',
+    'Dattai',
+    'Dattai',
+    'dattai',
+    'http://localhost:3002',
+    'ACTIVE',
+    '0.1.0',
+    'local/database/dattai',
+    'local/storage/dattai',
+    'http://localhost:8080/realms/bench-management',
+    'dattai-console',
+    'local-docker/dattai'
+  );
+
+COMMIT;
+
